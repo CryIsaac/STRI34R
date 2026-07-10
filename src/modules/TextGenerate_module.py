@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import ollama, asyncio
-from ctransformers import AutoModelForCausalLM
+from ctransformers import AutoModelForCausalLM, Config
 
 
 #-----------------------------------------------------------------------------------------------
@@ -10,7 +10,7 @@ class Frame_TextGenerate(ABC):
     def __init__(self):
         pass
     @abstractmethod
-    def InOutPut(self, text):
+    def InOutPut(self, text:str):
         pass
 #-----------------------------------------------------------------------------------------------
 class Mollama(Frame_TextGenerate):
@@ -73,13 +73,13 @@ class Mollama(Frame_TextGenerate):
             'num_gpu': self.num_gpu, 'seed': self.seed
         }.items() if val is not None}
 
-    def InOutPut(self, text):
+    def InOutPut(self, text:str):
         self.messages.append({'role': 'user', 'content': text})
         response = ollama.chat(model=self.model, messages=self.messages, stream=False, options=self.settings())
         print(response["message"]['content'])
         return response["message"]['content']
     
-    async def asynhron_InOutPut(self, text=""):
+    async def asynhron_InOutPut(self, text:str):
         self.messages.append({'role': 'user', 'content': text})
         asynhron_client = ollama.AsyncClient()
         response = await asynhron_client.chat(model=self.model, messages=self.messages, stream=False, options=self.settings())
@@ -88,7 +88,32 @@ class Mollama(Frame_TextGenerate):
     # asyncio.run(asynhron_InOutPut(TEXT)) <-- если вам нужно запустить это\
 #-----------------------------------------------------------------------------------------------
 class Mctransformers(Frame_TextGenerate):
-    def __init__(self):
-        pass
-    def InOutPut(self, text):
-        pass
+    def __init__(self, model_path:str, model_type:str, system_promt:str, lib:str="basic"):
+        self.chat_history:list = []
+        self.system_promt:str = system_promt + "\n"
+        config=Config(top_k=40, top_p=0.95, temperature=0.8,repetition_penalty=1.1, last_n_tokens=64, seed=-1,batch_size=8,threads=-1, max_new_tokens=256,stream=False,reset=True,context_length=-1,gpu_layers=0,mmap=True,mlock=False)
+        self.llm = AutoModelForCausalLM.from_pretrained(model_path, model_type=model_type, lib=lib, config=config)
+
+    def reinit_llm(self, model_path:str, model_type:str, system_promt:str, lib:str="basic",
+                   top_k=40, top_p=0.95, temperature=0.8,repetition_penalty=1.1, last_n_tokens=64, 
+                   seed=-1,batch_size=8,threads=-1, max_new_tokens=256,
+                   stream=False,reset=True,
+                   context_length=-1,gpu_layers=0,
+                   mmap=True,mlock=False):
+        config=Config(top_k=top_k, top_p=top_p, temperature=temperature, repetition_penalty=repetition_penalty, last_n_tokens=last_n_tokens, seed=seed, batch_size=batch_size, threads=threads, max_new_tokens=max_new_tokens, stream=stream, reset=reset, context_length=context_length, gpu_layers=gpu_layers, mmap=mmap, mlock=mlock)
+        self.llm = AutoModelForCausalLM.from_pretrained(model_path, model_type=model_type, lib=lib, config=config)
+    
+    def get_promt(self):
+        for message in self.chat_history[-10:]:
+            full_prompt += f"{message['role']}: {message['content']}\n"
+        full_prompt += "assistant:"
+        return full_prompt
+    
+    def InOutPut(self, text:str, max_new_tokens:int=128):
+        self.chat_history.append({"role": "user", "content": text})
+        respone = self.llm(self.get_promt(), max_new_tokens=max_new_tokens)
+        self.chat_history.append({"role": "assistant", "content": respone})
+        return respone
+#-----------------------------------------------------------------------------------------------
+if __name__ == "__main__":
+    pass
